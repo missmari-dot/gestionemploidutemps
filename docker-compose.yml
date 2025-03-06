@@ -1,0 +1,17 @@
+#version: '3.8'
+
+services:
+  gestionemploidutemps-service:
+    image: mariama640/gestionemploidutemps:latest
+    container_name: gestionemploidutemps
+    restart: always
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    driver: bridge
