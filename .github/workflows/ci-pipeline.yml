@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 name: CI - Gestionemploidutemps Service
 
 on:
@@ -73,7 +73,7 @@ jobs:
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
 
-  deploy:
+  deploy-k8s:
     needs: docker
     runs-on: ubuntu-latest
     env:
@@ -83,66 +83,35 @@ jobs:
       - name: 🛎 Cloner le repo
         uses: actions/checkout@v3
 
-      - name: 🚀 Déploiement selon l'environnement
+
+      - name: 📥 Installer `kubectl`
         run: |
-          TAG=$(echo $GITHUB_REF | sed 's/refs\/heads\///')
-          if [[ "$TAG" == "master" ]]; then
-            echo "Déploiement en DEV sur Docker..."
-            docker run -d -p 8080:8080 ${{ env.IMAGE_NAME }}:master
-          elif [[ "$TAG" == "staging" ]]; then
-            echo "Déploiement en STAGING sur Docker..."
-            docker run -d -p 8080:8080 ${{ env.IMAGE_NAME }}:staging
-          elif [[ "$TAG" == "preprod" || "$TAG" == "prod" ]]; then
-            echo "Déploiement en K8s (non configuré pour l’instant)"
-            # Ici, on ajoutera plus tard le script pour déployer sur Kubernetes
-          fi
-=======
-name: CI - Etudiant Service
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
 
-on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Cloner le repo
-        uses: actions/checkout@v3
-
-      - name: 🏗️ Set up JDK 21
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: 🏗️ Build du projet
-        run: mvn clean install -DskipTests
-
-      - name: 🧪 Exécuter les tests
-        run: mvn test
-
-      - name: 🎯 Vérification SonarQube
-        run: mvn sonar:sonar -Dsonar.projectKey=missmari-dot_gestionemploidutemps -Dsonar.organization=missmari-dot -Dsonar.host.url=https://sonarcloud.io
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      - name: 🏷 Création d’une image Docker
+      - name: 🔑 Configurer AWS CLI
         run: |
-          docker build -t gestionemploidutemps:latest .
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region eu-north-1
 
-      - name: 🔑 Login à Docker Hub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-      - name: 🚀 Push de l'image Docker (Docker Hub)
+      - name: 🔑 Mettre à jour le contexte Kubernetes pour EKS
         run: |
-          docker tag gestionemploidutemps:latest mariama640/gestionemploidutemps:latest
-          docker push mariama640/gestionemploidutemps:latest
+          aws eks update-kubeconfig --name emploi-gestion-cluster --region eu-north-1
+          kubectl config current-context
 
-      - name: 🔒 Logout de Docker Hub
-        run: docker logout
->>>>>>> e61d308bcbdf57de88f6810750639bb01527d76a
+      - name: 🔑 Configurer l'accès à Kubernetes
+        run: |
+          echo "${{ secrets.KUBECONFIG }}" | base64 --decode > kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+          kubectl config use-context arn:aws:eks:eu-north-1:851725523231:cluster/emploi-gestion-cluster
+
+      - name: 🔍 Vérifier la connexion au cluster EKS
+        run: kubectl get nodes
+
+      - name: 🚀 Déployer sur Kubernetes (Preprod)
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
